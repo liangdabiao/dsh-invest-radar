@@ -4,6 +4,11 @@ DeepSeek Harness（dsh）插件：A股投资者的全球产业链资讯看板。
 
 移植自 [investment-news](https://github.com/simonlin1212/investment-news)（MIT，纯 Python 标准库）。原项目的 claude-cli spawn 层在 dsh 里被更干净地替代：会话模型本身就是那个 LLM。
 
+<img width="2463" height="1398" alt="image" src="https://github.com/user-attachments/assets/7b249bae-a63f-4601-819d-48c33cbabad8" />
+<img width="1464" height="1389" alt="image" src="https://github.com/user-attachments/assets/68f487e5-9003-4c0c-86dd-555d0477da98" />
+<img width="1662" height="1332" alt="image" src="https://github.com/user-attachments/assets/017788a2-aeff-42c9-af25-422d3bbacef5" />
+
+
 ## 核心功能
 
 - 📡 **本地抓取**：`invest_news(action="fetch")` 并发抓取 106+ 源（40 并发、单源超时可配、失败源如实降级），URL 归一化剥跟踪参数、48h 标题窗去重（跨周栏目不误杀）、26 个红线词过滤（赌博/加密/预测市场/色情），北京时间规整
@@ -25,7 +30,7 @@ AI/大模型 · 半导体/芯片 · 机器人/自动化 · 汽车/新能源车 �
 ## 安装
 
 ```bash
-dsh plugin add <本仓库本地路径>
+dsh plugin add  https://github.com/liangdabiao/dsh-invest-radar 
 ```
 
 依赖自动安装（仅 `@deepseek-ai/schemastery`；RSS 解析是手写的，零第三方）。数据在 `~/.dsh/invest-radar/`（`DSH_HOME` 可改）。
