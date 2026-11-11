@@ -1,6 +1,6 @@
 {
   "name": "dsh-invest-radar",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "投资雷达 · A股投资者的全球产业链资讯看板：12 大赛道（一一对应 A股板块）× 106 个海外权威 RSS 源，本地抓取 + 会话模型提炼中文「今日要点」与标题翻译，侧栏面板呈现。零 API key，移植自 investment-news（MIT）。",
   "license": "MIT",
   "type": "module",
