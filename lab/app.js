@@ -48,6 +48,8 @@
     list: '<path d="M8 6h12M8 12h12M8 18h12"/><path d="M4 6h.01M4 12h.01M4 18h.01"/>',
     go: '<path d="M9 6l6 6-6 6"/>',
     trash: '<path d="M5 7h14"/><path d="M9 7V5h6v2"/><path d="M7 7l1 13h8l1-13"/>',
+    pause: '<path d="M9 5v14"/><path d="M15 5v14"/>',
+    play: '<path d="M8 5l11 7-11 7V5z"/>',
     spark: '<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/>',
     ext: '<path d="M14 5h5v5"/><path d="M19 5l-8 8"/><path d="M18 14v5H5V6h5"/>',
     back: '<path d="M14 6l-6 6 6 6"/>',
@@ -91,26 +93,28 @@
 
   function bindRefresh() {
     document.querySelectorAll('[data-refresh]').forEach((b) => {
-      b.onclick = () => {
-        const prompt = refreshPrompt(b.dataset.refresh || '')
-        if (!EMBEDDED) {
-          navigator.clipboard?.writeText(prompt).then(
-            () => toast('刷新草稿已复制——粘贴到 dsh 对话即可开始'),
-            () => copyFallback(prompt, '复制失败'))
-          return
-        }
-        let done = false
-        const cleanup = () => { done = true; clearTimeout(timer); removeEventListener('message', onMsg) }
-        const onMsg = (e) => {
-          if (e.origin !== location.origin) return
-          if (e.data?.type === 'invest-radar:start-ok') { if (!done) { cleanup(); toast('已在宿主开新对话——agent 会抓取并提炼，完成后回看板') } }
-          else if (e.data?.type === 'invest-radar:start-failed') { if (!done) { cleanup(); toast(`没能开新对话：${e.data.message || ''}`, true) } }
-        }
-        const timer = setTimeout(() => { if (!done) { cleanup(); copyFallback(prompt, '未收到宿主确认') } }, 1500)
-        addEventListener('message', onMsg)
-        parent.postMessage({ type: 'invest-radar:refresh', prompt }, location.origin)
-      }
+      b.onclick = () => sendAgentPrompt(refreshPrompt(b.dataset.refresh || ''), '已在宿主开新对话——agent 会抓取并提炼，完成后回看板')
     })
+  }
+
+  // 把一段 prompt 送到 agent 对话（嵌入=开新对话；独立预览=复制草稿）
+  function sendAgentPrompt(prompt, okMsg = '已在宿主开新对话——agent 处理中') {
+    if (!EMBEDDED) {
+      navigator.clipboard?.writeText(prompt).then(
+        () => toast('草稿已复制——粘贴到 dsh 对话即可开始'),
+        () => copyFallback(prompt, '复制失败'))
+      return
+    }
+    let done = false
+    const cleanup = () => { done = true; clearTimeout(timer); removeEventListener('message', onMsg) }
+    const onMsg = (e) => {
+      if (e.origin !== location.origin) return
+      if (e.data?.type === 'invest-radar:start-ok') { if (!done) { cleanup(); toast(okMsg) } }
+      else if (e.data?.type === 'invest-radar:start-failed') { if (!done) { cleanup(); toast(`没能开新对话：${e.data.message || ''}`, true) } }
+    }
+    const timer = setTimeout(() => { if (!done) { cleanup(); copyFallback(prompt, '未收到宿主确认') } }, 1500)
+    addEventListener('message', onMsg)
+    parent.postMessage({ type: 'invest-radar:refresh', prompt }, location.origin)
   }
 
   // ---------- 视图：概览 ----------
@@ -134,7 +138,7 @@
       </header>
       <div class="stats">
         <div class="stat"><div class="mono">UPDATED</div><div class="val" style="font-size:18px;font-weight:400;padding-top:6px">${esc(c.generated_at || '从未抓取')}</div><div class="sub">最近 ${c.recent_days} 天</div></div>
-        <div class="stat"><div class="mono">SOURCES</div><div class="val">${c.stats.active_sources}</div><div class="sub">活跃信息源${failed.length ? ` · 失败 ${failed.length}` : ''}</div></div>
+        <div class="stat"><div class="mono">SOURCES</div><div class="val">${c.stats.active_sources}</div><div class="sub">活跃信息源${c.stats.disabled_sources ? ` · 停用 ${c.stats.disabled_sources}` : ''}${failed.length ? ` · 失败 ${failed.length}` : ''}</div></div>
         <div class="stat"><div class="mono">NEWS</div><div class="val">${c.stats.items}</div><div class="sub">在库新闻</div></div>
         <div class="stat"><div class="mono">POINTS</div><div class="val">${c.stats.points}</div><div class="sub">今日要点</div></div>
       </div>
@@ -144,7 +148,27 @@
         ${c.generated_at ? `<div class="sectors">${sectorCards}</div>` : `<div class="empty"><div class="e-title">还没有数据</div><p>点右上「刷新看板」：会开新对话让 agent 抓取全部源并提炼今日要点；独立预览模式则复制草稿到剪贴板。</p><p><button class="btn" data-refresh="" style="margin-top:12px">${ic('spark')}开始第一次抓取</button></p></div>`}
       </section>
       <section class="sec">
-        <div class="sec-head"><span class="num">02</span><h2>怎么用</h2></div>
+        <div class="sec-head"><span class="num">02</span><h2>定时抓取</h2></div>
+        <div class="form" style="display:flex;gap:14px;align-items:flex-end;flex-wrap:wrap">
+          <div class="field" style="min-width:210px"><label>AUTO FETCH · 自动抓取新闻（本机直连，不含 AI 提炼）</label>
+            <select id="sch-hours" style="height:36px;padding:0 8px;background:var(--grey-1);border:1px solid var(--line)">
+              <option value="6">每 6 小时</option>
+              <option value="12">每 12 小时</option>
+              <option value="24">每 24 小时</option>
+              <option value="48">每 48 小时</option>
+            </select></div>
+          <div style="display:flex;gap:8px;padding-bottom:2px">
+            <button class="btn accent" id="sch-on">启用</button>
+            <button class="btn ghost" id="sch-off">停用</button>
+            <button class="btn" id="sch-now">立即抓一次</button>
+            <button class="btn ghost" id="sch-agent">${ic('spark')}建全自动定时（抓+提炼）</button>
+          </div>
+          <div class="hint" id="sch-status" style="flex-basis:100%">…</div>
+          <div class="hint" style="flex-basis:100%">这里只自动更新新闻列表（不含 AI 提炼）；想要抓取+提炼全自动，点「建全自动定时」让 agent 用 dsh 定时任务创建，频率可在对话里调整。</div>
+        </div>
+      </section>
+      <section class="sec">
+        <div class="sec-head"><span class="num">03</span><h2>怎么用</h2></div>
         <div class="cards">
           <div class="card step"><div class="num">1</div><div class="c-title">刷新</div><p>点「刷新看板」开新对话，agent 抓取 106 个源（去重 + 合规红线过滤），失败源如实报告。</p></div>
           <div class="card step"><div class="num">2</div><div class="c-title">提炼</div><p>agent 按 news-digest 技能逐赛道提炼 3-5 条中文要点（带原文溯源）+ 标题翻译，存档后看板立即可见。</p></div>
@@ -232,8 +256,17 @@
       <header class="head">
         <span class="eyebrow">SOURCES</span>
         <h1>信息<strong>源</strong></h1>
-        <p>内置 106 个权威源（原项目 sources.json），可增删（存用户配置，不动内置清单）。🟢 上次抓取正常 · 🔴 失败。加源后下次 fetch 生效。</p>
+        <p>内置 106 个权威源（原项目 sources.json），可增删、可临时开关（⏸ 停用的源 fetch 跳过，不删除）。🟢 上次抓取正常 · 🔴 失败 · ⏸ 已停用。改动下次 fetch 生效。</p>
       </header>
+      <div class="form" style="margin-bottom:var(--sp-6)">
+        <div class="field"><label>PROXY · 海外源代理（抓取与定时抓取都走它；清空保存 = 直连/环境变量）</label>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <input id="proxy-url" placeholder="http://127.0.0.1:7890" style="flex:1;min-width:220px;height:36px;padding:0 12px;background:var(--grey-1);border:1px solid var(--line);outline:none;font-family:var(--font-mono);font-size:12px">
+            <button class="btn" id="proxy-save">保存代理</button>
+          </div>
+          <div class="hint">默认预填本机常见代理端口 7890；改动立即生效（下次抓取/定时抓取都用它）。海外源直连超时的话，配代理能大幅提升成功率。</div>
+        </div>
+      </div>
       <div class="form" style="margin-bottom:var(--sp-6)">
         <div class="field"><label>ADD SOURCE · 加源（RSS 地址）</label>
           <div style="display:flex;gap:8px;flex-wrap:wrap">
@@ -251,6 +284,21 @@
   async function renderSourceTable() {
     const el = document.getElementById('src-table')
     if (!el) return
+    // 代理设置：预填当前值（默认 http://127.0.0.1:7890）
+    try {
+      const { settings } = await api('/api/settings')
+      const inp = document.getElementById('proxy-url')
+      if (inp && document.activeElement !== inp) inp.value = settings.proxy_url || ''
+    } catch { /* 宿主未就绪 */ }
+    const proxySave = document.getElementById('proxy-save')
+    if (proxySave && !proxySave.onclick) proxySave.onclick = async () => {
+      const inp = document.getElementById('proxy-url')
+      try {
+        const r = await apiPost('/api/settings', { proxy_url: inp.value.trim() })
+        toast(`代理已保存：${r.settings.proxy_url || '（直连）'}`)
+        loadCatalog()
+      } catch (e) { toast(e.message, true) }
+    }
     let data
     try { data = await api('/api/sources') } catch (e) { el.innerHTML = `<div class="empty">${esc(e.message)}</div>`; return }
     const sel = document.getElementById('src-sector')
@@ -259,19 +307,35 @@
     const rows = []
     for (const ind of data.industries) {
       const list = data.bySector[ind.key] || []
-      rows.push(`<tr class="src-group-head"><td colspan="3">${esc(ind.name)}（${list.length}）</td></tr>`)
+      const on = list.filter((s) => s.enabled !== false).length
+      rows.push(`<tr class="src-group-head"><td colspan="3">${esc(ind.name)}（启用 ${on}/${list.length}）</td></tr>`)
       for (const s of list) {
-        const bad = s.failed || failedSet.has(`${s.name}:`)
+        const off = s.enabled === false
+        const bad = !off && (s.failed || failedSet.has(`${s.name}:`))
         let host = ''
         try { host = new URL(s.url).host } catch {}
-        rows.push(`<tr>
-          <td class="st ${bad ? 'bad' : 'ok'}">${bad ? '🔴 FAIL' : '🟢 OK'}</td>
+        rows.push(`<tr class="${off ? 'src-off' : ''}">
+          <td class="st ${off ? 'off' : bad ? 'bad' : 'ok'}">${off ? '⏸ OFF' : bad ? '🔴 FAIL' : '🟢 OK'}</td>
           <td><div>${esc(s.name)}</div><div class="host">${esc(host)}</div></td>
-          <td style="text-align:right"><button class="src-del" data-del-src="${esc(s.name)}" title="删除源">${ic('trash')}</button></td>
+          <td style="text-align:right;white-space:nowrap">
+            <button class="src-del" data-toggle-src="${esc(s.name)}" data-on="${off ? '1' : ''}" title="${off ? '重新启用（fetch 恢复抓取）' : '临时停用（fetch 跳过，不删除）'}">${ic(off ? 'play' : 'pause')}</button>
+            <button class="src-del" data-del-src="${esc(s.name)}" title="删除源">${ic('trash')}</button>
+          </td>
         </tr>`)
       }
     }
     el.innerHTML = `<table class="src-table">${rows.join('')}</table>`
+    el.querySelectorAll('[data-toggle-src]').forEach((b) => {
+      b.onclick = async () => {
+        const enable = b.dataset.on === '1'
+        try {
+          await apiPost('/api/sources/toggle', { name: b.dataset.toggleSrc, enabled: enable })
+          toast(enable ? '已启用，下次 fetch 恢复抓取' : '已停用，fetch 将跳过该源')
+          renderSourceTable()
+          loadCatalog()
+        } catch (e) { toast(e.message, true) }
+      }
+    })
     el.querySelectorAll('[data-del-src]').forEach((b) => {
       b.onclick = async () => {
         if (!confirm(`删除信息源「${b.dataset.delSrc}」？（不动内置清单的原始定义，只从生效清单移除）`)) return
@@ -300,6 +364,68 @@
     }
   }
 
+  // ---------- 定时抓取 ----------
+  function schStatusText(s) {
+    const base = s.enabled ? `启用中 · 每 ${s.hours} 小时` : '已停用'
+    const last = s.last_run ? ` · 上次 ${esc(String(s.last_run).slice(5, 16)).replace('T', ' ')}` : ' · 从未运行'
+    const err = s.last_error ? ` · ⚠️ ${esc(s.last_error)}` : ''
+    const n = s.last_count ? ` · 入库 ${s.last_count} 条` : ''
+    return base + last + n + err
+  }
+
+  // 让 agent 用 DSH 定时任务建「抓取 + 全赛道提炼」的全自动刷新
+  function fullAutoPrompt(hours) {
+    return [
+      `请为投资雷达创建一个 DSH 定时任务：每 ${hours || 12} 小时自动刷新一次（抓取 + 全赛道提炼 + 存档）。`,
+      '要求：',
+      '- 用 schedule_create 创建，target 用 new_once（独立新会话，不打断当前对话），标题「定时刷新投资雷达」；',
+      '- 每次触发的 prompt 按这个流程走：invest_news(action="status") → invest_news(action="fetch")（失败源如实记录，不重试轰炸）→ 逐赛道 list → 按 news-digest 技能提炼 3-5 条要点（≤40 字、带原文溯源）+ 标题翻译 → digest_save 存档；',
+      '- 要点不荐股、不给买卖建议，最后附「以上为行业资讯聚合与翻译，不构成投资建议」；',
+      '- 创建完成后，把任务 id、下次触发时间告诉我，并提醒我可在对话里随时改频率或暂停。',
+      '创建前先跟我确认这个频率是否合适。',
+    ].join('\n')
+  }
+  async function refreshSchStatus() {
+    try {
+      const { schedule } = await api('/api/schedule')
+      const el = document.getElementById('sch-status')
+      if (el) el.textContent = schStatusText(schedule)
+      const hours = document.getElementById('sch-hours')
+      if (hours) hours.value = String(schedule.hours)
+    } catch { /* 宿主未就绪 */ }
+  }
+  async function bindSchedule() {
+    await refreshSchStatus()
+    const post = async (payload, okMsg) => {
+      try {
+        const r = await apiPost('/api/schedule', payload)
+        const el = document.getElementById('sch-status')
+        if (el && r.schedule) el.textContent = schStatusText(r.schedule)
+        toast(okMsg)
+        loadCatalog()
+      } catch (e) { toast(e.message, true) }
+    }
+    const on = document.getElementById('sch-on')
+    const off = document.getElementById('sch-off')
+    const now = document.getElementById('sch-now')
+    const hoursEl = document.getElementById('sch-hours')
+    const agent = document.getElementById('sch-agent')
+    if (on) on.onclick = () => post({ enabled: true, hours: Number(hoursEl?.value) || 12 }, '定时抓取已启用')
+    if (off) off.onclick = () => post({ enabled: false }, '定时抓取已停用')
+    if (agent) agent.onclick = () => sendAgentPrompt(fullAutoPrompt(Number(hoursEl?.value) || 12), '已在宿主开新对话——agent 会确认频率后创建定时任务')
+    if (now) now.onclick = async () => {
+      if (now.disabled) return
+      now.disabled = true; now.textContent = '抓取中…'
+      try {
+        const r = await apiPost('/api/schedule', { runNow: true })
+        toast(r.ok ? `抓取完成：入库 ${r.items ?? '?'} 条${r.failed ? ` · 失败源 ${r.failed}` : ''}` : `抓取失败：${r.error}`, !r.ok)
+        loadCatalog()
+      } catch (e) { toast(e.message, true) }
+      now.disabled = false; now.textContent = '立即抓一次'
+      refreshSchStatus()
+    }
+  }
+
   // ---------- 渲染辅助 ----------
   function head(title, eyebrow, actionsHtml = '') {
     return `<header class="head"><span class="eyebrow">${esc(eyebrow)}</span>
@@ -318,6 +444,7 @@
   function bindCommon() {
     bindRefresh()
     bindBoard()
+    bindSchedule()
     renderSourceTable()
     renderHomePoints()
   }

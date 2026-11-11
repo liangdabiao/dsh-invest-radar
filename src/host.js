@@ -8,8 +8,8 @@ import { systemSection } from './systemPrompt.js'
 import { registerApi } from '../lib/api.js'
 import { fetchAll } from '../lib/fetcher.js'
 import {
-  DEFAULT_CONFIG, getFeed, listSources, saveFeed, saveDigest,
-  addSource, removeSource, status,
+  DEFAULT_CONFIG, getFeed, listAllSources, listSources, saveFeed, saveDigest,
+  addSource, removeSource, setSourceEnabled, status, getSchedule, saveSchedule,
 } from '../lib/store.js'
 
 export const name = 'invest-radar' // = cordis.patch.yml 的 id
@@ -76,6 +76,16 @@ function parseSectors(input) {
   return keys.length ? keys : null
 }
 
+// fetch 参数（工具 fetch 与面板定时抓取共用一份）
+const fetchOpts = (cfg = {}) => ({
+  recentDays: cfg.recentDays ?? 7,
+  perSource: cfg.perSource ?? 5,
+  timeout: cfg.timeout ?? 30000,
+  proxyUrl: cfg.proxyUrl || getSettings().proxy_url || process.env.HTTPS_PROXY || process.env.HTTPS_proxy || process.env.HTTP_PROXY || '',
+  concurrency: cfg.concurrency ?? 40,
+  redline: DEFAULT_CONFIG.redline_keywords || [],
+})
+
 // ---------------------------------------------------------------------------
 // 工具：invest_news —— 抓取 / 列表 / 提炼存档 / 状态 / 源管理
 // ---------------------------------------------------------------------------
@@ -85,7 +95,8 @@ export const investNewsTool = {
     '投资雷达档案库：抓取 12 大赛道（一一对应 A股板块）× 100+ 海外权威 RSS 源，去重与合规过滤；' +
     '读取新闻列表供提炼；保存「今日要点」+ 中文标题翻译存档（侧栏「投资雷达」看板呈现）。' +
     '流程：status 看新鲜度 → fetch 抓取 → list 读新闻 → 按 news-digest 技能提炼 → digest_save 存档。' +
-    '提炼（要点+翻译）由你完成，工具不调外部 LLM。',
+    '提炼（要点+翻译）由你完成，工具不调外部 LLM。源可临时停用（disable，fetch 跳过）；' +
+    '定时自动抓取在面板「信息源」页配置；用户要「定时全自动刷新（抓+提炼）」时用 DSH 定时任务（schedule_create）创建，先确认频率。',
   parameters: {
     type: 'object',
     additionalProperties: false,
@@ -97,8 +108,8 @@ export const investNewsTool = {
       sectors: str('fetch/list：可选，逗号分隔的赛道 key 或名称（如 "ai,semi" / "AI,半导体"）；省略=全部 12 赛道'),
       limit: str('list：每赛道最多返回条数，默认 16（与提炼规范 TOPN 一致）'),
       digestJson: str('digest_save：JSON 字符串。单赛道 {"key":"ai","points":[{"t":"要点","url":"原文链接"}],"items":[{"url":"新闻链接","zh":"中文标题"}]} 或赛道数组'),
-      sourceAction: str('sources：list 列全部 / add 加源 / remove 删源', { enum: ['list', 'add', 'remove'] }),
-      name: str('sources add/remove：源名'),
+      sourceAction: str('sources：list 列全部 / add 加源 / remove 删源 / enable 启用 / disable 停用（停用的源 fetch 跳过）', { enum: ['list', 'add', 'remove', 'enable', 'disable'] }),
+      name: str('sources add/remove/enable/disable：源名'),
       url: str('sources add：RSS 地址'),
       sector: str('sources add：所属赛道 key（status/sources list 里能看到）'),
     },
@@ -112,19 +123,13 @@ export const investNewsTool = {
     if (args.action === 'fetch') {
       const keys = parseSectors(args.sectors)
       const industries = keys ? DEFAULT_CONFIG.industries.filter((i) => keys.includes(i.key)) : DEFAULT_CONFIG.industries
-      const sources = listSources().filter((s) => industries.some((i) => i.key === s.hint))
-      if (!sources.length) return result(false, `赛道 ${args.sectors || '全部'} 下没有可用源。sources action=list 先看清单。`)
-      const feed = await fetchAll({ industries, sources }, {
-        recentDays: cfg.recentDays ?? 7,
-        perSource: cfg.perSource ?? 5,
-        timeout: cfg.timeout ?? 30000,
-        proxyUrl: cfg.proxyUrl || process.env.HTTPS_PROXY || process.env.HTTPS_proxy || process.env.HTTP_PROXY || '',
-        concurrency: cfg.concurrency ?? 40,
-        redline: DEFAULT_CONFIG.redline_keywords || [],
-      })
+      const sources = listSources().filter((s) => industries.some((i) => i.key === s.hint)) // listSources 已剔除停用源
+      if (!sources.length) return result(false, `赛道 ${args.sectors || '全部'} 下没有可用源（可能都被停用或删除）。sources action=list 先看清单，enable 可重新打开。`)
+      const opts = fetchOpts(cfg)
+      const feed = await fetchAll({ industries, sources }, opts)
       const saved = saveFeed(feed)
       const lines = feed.industries.map((b) => `${b.name}：${b.items.length} 条`)
-      const failedNote = saved.failed_sources.length ? `；${saved.failed_sources.length}/${sources.length} 源失败（${saved.failed_sources.slice(0, 8).join('、')}${saved.failed_sources.length > 8 ? '…' : ''}）${cfg.proxyUrl || process.env.HTTPS_PROXY ? '' : '——海外源建议配 proxyUrl'}` : `；${sources.length} 源全部成功`
+      const failedNote = saved.failed_sources.length ? `；${saved.failed_sources.length}/${sources.length} 源失败（${saved.failed_sources.slice(0, 8).join('、')}${saved.failed_sources.length > 8 ? '…' : ''}）${opts.proxyUrl ? '' : '——海外源建议配 proxyUrl'}` : `；${sources.length} 源全部成功`
       return result(true,
         `抓取完成（${feed.generated_at}，最近 ${feed.recent_days} 天，去重 ${saved.dup_removed} 条）${failedNote}。接下来：list 读新闻 → 按 news-digest 技能提炼 → digest_save 存档。`,
         lines.join('\n'))
@@ -209,15 +214,26 @@ export const investNewsTool = {
         if (!r.ok) return result(false, r.error)
         return result(true, `已删源「${args.name}」。下次 fetch 生效。`)
       }
+      if (sub === 'enable' || sub === 'disable') {
+        if (!args.name) throw new Error(`sources ${sub} 需要 name（源名，list 里能看到）。`)
+        const r = setSourceEnabled(args.name, sub === 'enable')
+        if (!r.ok) return result(false, r.error)
+        return result(true, sub === 'enable'
+          ? `已启用源「${args.name}」，下次 fetch 恢复抓取。`
+          : `已停用源「${args.name}」，下次 fetch 起跳过（清单保留，enable 可再打开）。`)
+      }
       const feed = getFeed()
       const failed = feed?.failed_sources || []
-      const sources = listSources()
+      const sources = listAllSources()
+      const enabledCount = sources.filter((s) => s.enabled !== false).length
       const lines = DEFAULT_CONFIG.industries.map((ind) => {
         const list = sources.filter((s) => s.hint === ind.key)
-        const marks = list.map((s) => `${failed.some((f) => f.startsWith(`${s.name}:`)) ? '🔴' : '🟢'}${s.name}`).join('、')
-        return `${ind.name}（${list.length}）：${marks || '—'}`
+        const marks = list.map((s) => `${s.enabled === false ? '⏸' : failed.some((f) => f.startsWith(`${s.name}:`)) ? '🔴' : '🟢'}${s.name}`).join('、')
+        return `${ind.name}（启用 ${list.filter((s) => s.enabled !== false).length}/${list.length}）：${marks || '—'}`
       })
-      return result(true, `共 ${sources.length} 个源（🟢 正常 🔴 上次抓取失败）：`, lines.join('\n').slice(0, MAX_TEXT))
+      return result(true,
+        `共 ${sources.length} 个源，启用 ${enabledCount} 个（🟢 正常 🔴 上次抓取失败 ⏸ 已停用；enable/disable 可临时开关，remove 才是删）：`,
+        lines.join('\n').slice(0, MAX_TEXT))
     }
 
     throw new Error(`未知 action：${args.action}`)
@@ -237,5 +253,49 @@ export function apply(ctx, config) {
   if (config.injectRules !== false) {
     ctx.effect(() => ctx.systemPrompt.section(systemSection()), `${name}: workflow`)
   }
-  ctx.effect(() => registerApi(ctx), `${name}: routes`)
+
+  // ── 定时抓取：宿主进程内直跑 fetchAll（纯数据层，不需要会话；AI 提炼仍走对话）────
+  // 面板「定时抓取」写 schedule.json；这里 30s 心跳读它，到期即全量抓取并回写状态。
+  let fetching = false
+  const runFetchNow = async () => {
+    if (fetching) return { ok: false, error: '上一轮抓取还在进行中' }
+    fetching = true
+    try {
+      const sources = listSources()
+      const feed = await fetchAll({ industries: DEFAULT_CONFIG.industries, sources }, {
+        recentDays: config.recentDays ?? 7,
+        perSource: config.perSource ?? 5,
+        timeout: config.timeout ?? 30000,
+        proxyUrl: config.proxyUrl || getSettings().proxy_url || process.env.HTTPS_PROXY || process.env.HTTP_proxy || process.env.HTTP_PROXY || '',
+        concurrency: config.concurrency ?? 40,
+        redline: DEFAULT_CONFIG.redline_keywords || [],
+      })
+      const saved = saveFeed(feed)
+      const items = saved.industries.reduce((n, i) => n + i.items.length, 0)
+      saveSchedule({ last_run: new Date().toISOString(), last_error: null, last_count: items })
+      return { ok: true, items, failed: saved.failed_sources.length }
+    } catch (err) {
+      saveSchedule({ last_run: new Date().toISOString(), last_error: String(err?.message || err) })
+      return { ok: false, error: String(err?.message || err) }
+    } finally { fetching = false }
+  }
+
+  ctx.effect(() => registerApi(ctx, { runFetchNow, isFetching: () => fetching }), `${name}: routes`)
+
+  ctx.effect(() => {
+    const tick = async () => {
+      if (fetching) return
+      const sch = getSchedule()
+      if (!sch.enabled) return
+      const last = sch.last_run ? Date.parse(sch.last_run) : 0
+      if (Date.now() - last < (sch.hours || 12) * 3600_000) return
+      await runFetchNow()
+    }
+    const timer = setInterval(() => { tick().catch(() => {}) }, 30_000)
+    return () => clearInterval(timer)
+  }, `${name}: schedule timer`)
 }
+
+
+
+

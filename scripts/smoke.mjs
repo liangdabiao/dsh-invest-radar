@@ -95,6 +95,14 @@ const call = (args) => investNewsTool.execute(args, cfg)
   check('sources remove', r3.ok === true)
 }
 {
+  const r = await call({ action: 'sources', sourceAction: 'disable', name: 'FixB' })
+  check('sources disable', r.ok === true)
+  const r2 = await call({ action: 'fetch' })
+  check('停用源后 fetch 跳过（只剩 FixA）', r2.ok === true && r2.summary.includes('1 源全部成功'), r2.summary.slice(0, 60))
+  const r3 = await call({ action: 'sources', sourceAction: 'enable', name: 'FixB' })
+  check('sources enable 恢复', r3.ok === true)
+}
+{
   const r = await call({ action: 'fetch', sectors: '不存在的赛道' })
   check('非法赛道名回退全部（fixture 生效）', r.ok === true && r.data.includes('AI / 大模型：1 条'))
 }
@@ -137,6 +145,18 @@ const callApi = (path, opts) => new Promise((resolve) => {
   check('API 加源', add.ok === true)
   const rm = JSON.parse((await callApi('/api/sources/remove', { method: 'POST', body: { name: 'API测试源' } })).body)
   check('API 删源', rm.ok === true)
+  const tg = JSON.parse((await callApi('/api/sources/toggle', { method: 'POST', body: { name: 'FixA', enabled: false } })).body)
+  check('API 停用源', tg.ok === true && tg.enabled === false)
+  const srcs = JSON.parse((await callApi('/api/sources')).body)
+  check('API 源清单带 enabled 标记', srcs.bySector.ai.some((s) => s.name === 'FixA' && s.enabled === false) && srcs.counts?.enabled === 1, JSON.stringify(srcs.counts))
+  const act = JSON.parse((await callApi('/api/catalog')).body)
+  check('catalog 反映停用（active 1 / disabled 1）', act.stats.active_sources === 1 && act.stats.disabled_sources === 1)
+  const sch = JSON.parse((await callApi('/api/schedule', { method: 'POST', body: { enabled: true, hours: 6 } })).body)
+  check('API 定时配置写入', sch.ok === true && sch.schedule.enabled === true && sch.schedule.hours === 6)
+  const schGet = JSON.parse((await callApi('/api/schedule')).body)
+  check('API 定时状态读取', schGet.schedule.enabled === true && schGet.running === false)
+  const runNow = await callApi('/api/schedule', { method: 'POST', body: { runNow: true } })
+  check('runNow 无宿主 hooks 返回 409', runNow.statusCode === 409)
   const trav = await callApi(encodeURI('/invest-radar/../package.json').replace(/\.\./g, '%2e%2e'))
   check('路径穿越被拒', trav.statusCode === 404)
 }

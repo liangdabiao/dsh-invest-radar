@@ -34,7 +34,6 @@ svg.ic { width: 16px; height: 16px; flex: none; stroke: currentColor; fill: none
 .shell { display: grid; grid-template-columns: 216px minmax(0, 1fr); min-height: 100vh; }
 .rail { position: sticky; top: 0; height: 100vh; display: flex; flex-direction: column; padding: var(--sp-6) var(--sp-4); background: var(--paper); border-right: 1px solid var(--line-subtle); }
 .brand { display: flex; align-items: center; gap: var(--sp-3); padding: 0 var(--sp-3); }
-.brand-logo { width: 34px; height: 34px; flex: none; }
 .brand-name { display: block; font-weight: 600; font-size: 15px; letter-spacing: -.01em; line-height: 1.3; }
 .brand-sub { display: block; font-family: var(--font-mono); font-size: 10px; color: var(--text-helper); }
 .nav { display: flex; flex-direction: column; gap: 2px; margin-top: var(--sp-8); }
@@ -291,6 +290,8 @@ details.raw pre { margin: var(--sp-5); white-space: pre-wrap; overflow-wrap: any
 .src-table .st { font-family: var(--font-mono); font-size: 11px; white-space: nowrap; }
 .src-table .ok { color: var(--ok); }
 .src-table .bad { color: var(--accent); }
+.src-table .off { color: var(--text-helper); }
+.src-table tr.src-off td { opacity: .55; }
 .src-table .host { font-family: var(--font-mono); font-size: 11px; color: var(--text-helper); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 320px; }
 .src-del { color: var(--text-helper); }
 .src-del:hover { color: var(--accent); }
