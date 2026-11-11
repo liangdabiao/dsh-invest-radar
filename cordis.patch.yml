@@ -1,0 +1,5 @@
+# 投资雷达：invest_news 工具（抓取/提炼存档/源管理）+ news-digest 技能 + 侧栏看板。
+# 浏览器半边由 dsh.client 声明加载。
+- insert:
+    - id: invest-radar
+      name: 'dsh-invest-radar'

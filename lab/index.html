@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>投资雷达</title>
+<script src="scheme.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@200..700&family=Noto+Sans+SC:wght@200..700&family=JetBrains+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="shell">
+  <aside class="rail">
+    <a class="brand" href="#/">
+      <img class="brand-logo" src="icon.svg" alt="">
+      <span><span class="brand-name">投资雷达</span><span class="brand-sub">dsh-invest-radar</span></span>
+    </a>
+    <nav class="nav" aria-label="导航">
+      <div class="nav-group">看板</div>
+      <a href="#/" data-view="home"><i data-icon="home"></i>概览</a>
+      <a href="#/board" data-view="board"><i data-icon="board"></i>赛道看板</a>
+      <div class="nav-group">配置</div>
+      <a href="#/sources" data-view="sources"><i data-icon="list"></i>信息源<span class="nav-count" data-count="sources"></span></a>
+    </nav>
+    <div class="rail-foot" id="rail-foot"></div>
+  </aside>
+  <main class="main" id="app"><div class="loading">LOADING…</div></main>
+</div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<script src="app.js"></script>
+</body>
+</html>
