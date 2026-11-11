@@ -72,6 +72,7 @@ DSH_HOME=<目录> node scripts/devserver.mjs 5175   # 面板独立预览
 
 - [investment-news](https://github.com/simonlin1212/investment-news)：fetch.py 抓取引擎与去重细节（含 3 个真实 issue 的打磨）、106 源清单、digest 提示词均移植自该项目（MIT）
 - [dsh-guizang-design](https://github.com/op7418/dsh-guizang-design)：面板瑞士风设计系统参考
+- [linux.do](https://linux.do)：社区支持
 
 ## License
 
