@@ -10,6 +10,7 @@ import { fetchAll } from '../lib/fetcher.js'
 import {
   DEFAULT_CONFIG, getFeed, listAllSources, listSources, saveFeed, saveDigest,
   addSource, removeSource, setSourceEnabled, status, getSchedule, saveSchedule,
+  getSettings, saveSettings,
 } from '../lib/store.js'
 
 export const name = 'invest-radar' // = cordis.patch.yml 的 id
