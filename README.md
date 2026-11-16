@@ -32,7 +32,7 @@ AI/大模型 · 半导体/芯片 · 机器人/自动化 · 汽车/新能源车 �
 ## 安装
 
 ```bash
-dsh plugin add  https://github.com/liangdabiao/dsh-invest-radar 
+dsh plugin --profile web add https://github.com/liangdabiao/dsh-invest-radar
 ```
 
 依赖自动安装（仅 `@deepseek-ai/schemastery`；RSS 解析是手写的，零第三方）。数据在 `~/.dsh/invest-radar/`（`DSH_HOME` 可改）。
